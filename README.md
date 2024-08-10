@@ -1,1 +1,1 @@
-# ** Dietary_Assistant - DIANA **
+# Dietary_Assistant - DIANA
