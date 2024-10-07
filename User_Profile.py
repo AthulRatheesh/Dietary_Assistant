@@ -1,41 +1,99 @@
 import psycopg2 as pg
 from config import config
-def connect():
-        conn=None
-        params=config()
-        try:
-                print("Connecting.....")
-                conn=pg.connect(**params)
-                print("Connection Established!")
 
-                
-        except:
-                print("Connection Failed")
-connect()
-class User_Profile():
-        User={}         #User Data in dictionary format
-        def Basic_Info(self):
-                self.User['Name']=input("\nEnter name:")
-                self.User['Age']=int(input("\nEnter age:"))
-                self.User['Gender']=input("\nEnter gender:")
-                self.User['Height']=int(input("\nEnter height:"))
-                self.User['Weight']=int(input("\nEnter weight:"))
-                
-        def Activity_Details(self):
-                print("[Extremely Inactive, Sedentary, Moderately Active, Vigorously Active, Extremely Active]")
-                self.User['Activity_Level']=input("\nEnter Activity Level:")
-                self.User['Health_Goal']=input("\nInput Weight Loss, Muscle Gain or Maintenance:")
-        def Preferences(self):
-                self.User['Diet_restriction']=input("\nEnter if any restriction (vegan, gluten-free):")
-                self.User['Allergies']=input("\nInput if any allergies:").split(',')
-        def Meal_Timings(self):
-                self.User['Timing']=input("\nWhen do you typically eat??")
-        def __init__(self) -> None:
-                self.Basic_Info()
-                print(self.User)
-                self.Activity_Details()
-                self.Preferences()
-                self.Meal_Timings()
-User_Profile()
-                
-              
+def connect():
+    """ Connect to the PostgreSQL database server """
+    conn = None
+    try:
+        # read connection parameters
+        params = config()
+
+        # connect to the PostgreSQL server
+        print('Connecting to the PostgreSQL database...')
+        conn = pg.connect(**params)
+        
+        # create a cursor
+        cur = conn.cursor()
+
+        # execute a statement
+        print('PostgreSQL database version:')
+        cur.execute('SELECT version()')
+
+        # display the PostgreSQL database server version
+        db_version = cur.fetchone()
+        print(db_version)
+
+        return conn
+    except (Exception, pg.DatabaseError) as error:
+        print(error)
+        if conn is not None:
+            conn.close()
+        return None
+
+class UserProfile:
+    @staticmethod
+    def create_tables(cur):
+        command = '''
+        CREATE TABLE IF NOT EXISTS user_profile (
+            user_id SERIAL PRIMARY KEY,
+            name VARCHAR(50) NOT NULL,
+            age INTEGER NOT NULL,
+            gender VARCHAR(20) NOT NULL,
+            height FLOAT NOT NULL,
+            weight FLOAT NOT NULL
+        );
+        '''
+        try:
+            cur.execute(command)
+        except Exception as e:
+            print(f"Error creating table: {e}")
+            raise
+
+    def __init__(self):
+        self.conn = connect()
+        if self.conn is None:
+            raise Exception("Failed to connect to the database")
+        
+        self.cur = self.conn.cursor()
+        UserProfile.create_tables(self.cur)
+        self.conn.commit()
+
+        self.user_id = None
+        self.name = input("Enter your name: ")
+        self.age = int(input("Enter your age: "))
+        self.gender = input("Enter your gender: ")
+        self.height = float(input("Enter your height in cm: "))
+        self.weight = float(input("Enter your weight in kg: "))
+        #self.activity_level = input("Enter your activity level: ")
+        #self.goal = input("Enter your fitness goal: ")
+        #self.allergies = input("Enter any allergies: ")
+
+    def save_to_database(self):
+        sql = '''
+        INSERT INTO user_profile (name, age, gender, height, weight)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING user_id;
+        '''
+        try:
+            self.cur.execute(sql, (self.name, self.age, self.gender, self.height, self.weight,))
+            self.user_id = self.cur.fetchone()[0]
+            self.conn.commit()
+            print(f"User profile saved with ID: {self.user_id}")
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Error saving user profile: {e}")
+
+    def __del__(self):
+        if hasattr(self, 'cur') and self.cur is not None:
+            self.cur.close()
+        if hasattr(self, 'conn') and self.conn is not None:
+            self.conn.close()
+            print('Database connection closed.')
+
+# Usage
+if __name__ == "__main__":
+    try:
+        user = UserProfile()
+        user.save_to_database()
+    except Exception as e:
+        print(f"An error occurred: {e}")
